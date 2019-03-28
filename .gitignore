@@ -11,3 +11,9 @@ parts
 prime
 snap
 stage
+
+build/
+dist/
+prometheus_openstack_exporter.egg-info/
+functional-tests.log
+run_tests.log
