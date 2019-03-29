@@ -23,7 +23,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 """
 Some features related to VM diagnostics are added by the High Performance Lab,
 University of Bristol. 
-For some purposes the commands related to Cinder have been removed or commented. 
+For some purposes, the commands related to Cinder have been removed or ignored. 
 For more info send email to: shadi.moazzeni@bristol.ac.uk
 """
 
