@@ -2,7 +2,7 @@
 # Copyright (C) 2016-2019 Canonical, Ltd.
 #
 
-listen_port: 9183
+listen_port: 9983
 cache_refresh_interval: 300  # In seconds
 cache_file: /var/cache/prometheus-openstack-exporter/mycloud
 cloud: mycloud
@@ -13,10 +13,15 @@ openstack_allocation_ratio_disk: 1.0
 # Configure the enabled collectors here.  Note that the Swift account
 # collector in particular has special requirements.
 enabled_collectors:
-  - cinder
   - neutron
   - nova
   - swift
+
+#enabled_collectors:
+#  - cinder
+#  - neutron
+#  - nova
+#  - swift
 #  - swift-account-usage
 
 # To export hypervisor_schedulable_instances metric set desired instance size

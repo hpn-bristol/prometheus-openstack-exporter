@@ -20,6 +20,12 @@ See the GNU General Public License for more details.
 You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 """
+"""
+Some features related to VM diagnostics are added by the High Performance Lab,
+University of Bristol. 
+For some purposes the commands related to Cinder have been removed or commented. 
+For more info send email to: shadi.moazzeni@bristol.ac.uk
+"""
 
 import argparse
 import yaml
@@ -43,10 +49,8 @@ from BaseHTTPServer import HTTPServer
 from SocketServer import ForkingMixIn
 from prometheus_client import CollectorRegistry, generate_latest, Gauge, CONTENT_TYPE_LATEST
 from netaddr import IPRange
-
 import random
 import swift.common.utils
-
 from swift.common.ring.ring import Ring
 
 import logging
@@ -122,12 +126,12 @@ def get_clients():
         keystone = client.Client(session=sess_domain)
         nova = nova_client.Client(2, session=sess_admin)
         neutron = neutron_client.Client(session=sess_admin)
-        cinder = cinder_client.Client(session=sess_admin)
+#        cinder = cinder_client.Client(session=sess_admin)
 
     else:
         raise(ValueError("Invalid OS_IDENTITY_API_VERSION=%s" % ks_version))
     log.debug("Client setup done, keystone ver {}".format(ks_version))
-    return (keystone, nova, neutron, cinder)
+    return (keystone, nova, neutron)
 
 
 class DataGatherer(Thread):
@@ -141,7 +145,7 @@ class DataGatherer(Thread):
         self.duration = 0
         self.refresh_interval = config.get('cache_refresh_interval', 900)
         self.cache_file = config['cache_file']
-        self.use_nova_volumes = config.get('use_nova_volumes', True)
+        #self.use_nova_volumes = config.get('use_nova_volumes', True)
 
     def _get_keystone_info(self, keystone):
         info = {}
@@ -155,14 +159,16 @@ class DataGatherer(Thread):
 
     def _get_neutron_info(self, neutron):
         info = {}
-        info['floatingips'] = neutron.list_floatingips()['floatingips']
+        #info['floatingips'] = neutron.list_floatingips()['floatingips']
         info['networks'] = neutron.list_networks()['networks']
         info['ports'] = neutron.list_ports()['ports']
-        info['routers'] = neutron.list_routers()['routers']
+        #info['routers'] = neutron.list_routers()['routers']
         info['subnets'] = neutron.list_subnets()['subnets']
         return info
 
-    def _get_nova_info(self, nova, cinder, prodstack):
+#    def _get_nova_info(self, nova, cinder, prodstack):
+
+    def _get_nova_info(self, nova, prodstack):
         info = {}
         info['hypervisors'] = [x._info for x in nova.hypervisors.list()]
         info['services'] = [x._info for x in nova.services.list()]
@@ -184,8 +190,8 @@ class DataGatherer(Thread):
         info['nova_quotas'] = {}
         for t in prodstack['tenants']:
             tid = t['id']
-            if self.use_nova_volumes:
-                info['volume_quotas'][tid] = cinder.quotas.get(tid, usage=True)._info
+           # if self.use_nova_volumes:
+           #     info['volume_quotas'][tid] = cinder.quotas.get(tid, usage=True)._info
             # old OS versions (e.g. Mitaka) will 404 if we request details
             try:
                 info['nova_quotas'][tid] = nova.quotas.get(tid, detail=True)._info
@@ -199,11 +205,13 @@ class DataGatherer(Thread):
         while True:
             start_time = time()
             try:
-                keystone, nova, neutron, cinder = get_clients()
+
+                keystone, nova, neutron = get_clients()
+                #keystone, nova, cinder = get_clients()
 
                 prodstack.update(self._get_keystone_info(keystone))
                 prodstack.update(self._get_neutron_info(neutron))
-                prodstack.update(self._get_nova_info(nova, cinder, prodstack))
+                prodstack.update(self._get_nova_info(nova, prodstack))
 
             except Exception:
                 # Ignore failures, we will try again after refresh_interval.
@@ -245,9 +253,9 @@ class Neutron():
         self.network_map = {n['id']: n['name'] for n in self.prodstack['networks']}
         self.subnet_map = {
             n['id']: {'name': n['name'], 'pool': n['allocation_pools']} for n in self.prodstack['subnets']}
-        self.routers = self.prodstack['routers']
+        #self.routers = self.prodstack['routers']
         self.ports = self.prodstack['ports']
-        self.floating_ips = self.prodstack['floatingips']
+        #self.floating_ips = self.prodstack['floatingips']
 
     def _get_router_ip(self, uuid):
         owner = "network:router_gateway"
@@ -255,7 +263,7 @@ class Neutron():
             if port["device_id"] == uuid and port["device_owner"] == owner:
                 if port["status"] == "ACTIVE" and port["fixed_ips"]:
                     return port["fixed_ips"][0]["ip_address"]
-
+    '''
     def get_floating_ips(self):
         ips = {}
         for ip in self.floating_ips:
@@ -270,7 +278,7 @@ class Neutron():
             else:
                 ips[key] = 1
         return ips
-
+    '''
     def get_router_ips(self):
         ips = {}
         for r in self.routers:
@@ -308,17 +316,17 @@ class Neutron():
 
     def get_stats(self):
         labels = ['cloud', 'subnet_name', 'tenant', 'ip_type', 'ip_status']
-        ips = self.get_floating_ips()
-        ips.update(self.get_router_ips())
-        metrics = Gauge('neutron_public_ip_usage',
-                        'Neutron floating IP and router IP usage statistics',
-                        labels, registry=self.registry)
-        for k, v in ips.items():
-            metrics.labels(*k).set(v)
+#        ips = self.get_floating_ips()
+#        ips.update(self.get_router_ips())
+#        metrics = Gauge('neutron_public_ip_usage',
+#                        'Neutron floating IP and router IP usage statistics',
+#                        labels, registry=self.registry)
+#        for k, v in ips.items():
+#            metrics.labels(*k).set(v)
         self.gen_subnet_size()
         return generate_latest(self.registry)
 
-
+'''
 class Cinder():
     def __init__(self):
         self.registry = CollectorRegistry()
@@ -349,7 +357,7 @@ class Cinder():
     def get_stats(self):
         self.gen_volume_quota_stats()
         return generate_latest(self.registry)
-
+'''
 
 class Nova():
     def __init__(self):
@@ -633,7 +641,6 @@ class SwiftAccountUsage():
         self.hash_path_suffix = config.get('hash_path_suffix', None)
         if self.hash_path_suffix:
             swift.common.utils.HASH_PATH_SUFFIX = self.hash_path_suffix
-
         self.reseller_prefix = config['reseller_prefix']
         self.ring_path = config['ring_path']
 
@@ -699,7 +706,7 @@ class ForkingHTTPServer(ForkingMixIn, HTTPServer):
 
 # This could perhaps be cleverer, but surely not simpler.
 COLLECTORS = {
-    'cinder': Cinder,
+#    'cinder': Cinder,
     'neutron': Neutron,
     'nova': Nova,
     'swift': Swift,
@@ -707,7 +714,7 @@ COLLECTORS = {
     }
 
 DATA_GATHERER_USERS = [
-    'cinder',
+#    'cinder',
     'neutron',
     'nova',
     ]
